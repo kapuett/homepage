@@ -59,6 +59,47 @@ describe("widgets/dockhand/proxy", () => {
     expect(res.body).toEqual(Buffer.from("data"));
   });
 
+  it("sends Authorization Bearer header when key is provided", async () => {
+    getServiceWidget.mockResolvedValue({
+      type: "dockhand",
+      url: "http://dockhand",
+      key: "my-api-token",
+    });
+
+    httpProxy.mockResolvedValueOnce([200, "application/json", Buffer.from('{"status":"ok"}')]);
+
+    const req = { method: "GET", query: { group: "g", service: "svc", endpoint: "dashboard/stats", index: "0" } };
+    const res = createMockRes();
+
+    await dockhandProxyHandler(req, res);
+
+    expect(httpProxy).toHaveBeenCalledTimes(1);
+    expect(httpProxy.mock.calls[0][1]).toMatchObject({
+      headers: { Authorization: "Bearer my-api-token" },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("does not attempt login when key is provided and API returns 401", async () => {
+    getServiceWidget.mockResolvedValue({
+      type: "dockhand",
+      url: "http://dockhand",
+      key: "bad-token",
+    });
+
+    httpProxy.mockResolvedValueOnce([401, "application/json", Buffer.from("unauthorized")]);
+
+    const req = { method: "GET", query: { group: "g", service: "svc", endpoint: "dashboard/stats", index: "0" } };
+    const res = createMockRes();
+
+    await dockhandProxyHandler(req, res);
+
+    // Should NOT attempt login - only 1 call total
+    expect(httpProxy).toHaveBeenCalledTimes(1);
+    expect(res.statusCode).toBe(401);
+    expect(res.body.error.message).toBe("HTTP Error");
+  });
+
   it("returns a sanitized error response for HTTP errors", async () => {
     getServiceWidget.mockResolvedValue({
       type: "dockhand",
